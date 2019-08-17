@@ -2,56 +2,61 @@
 
 ```scala
 trait Function1[-A, +B] {
-  def apply(x: A): B
+  def apply(a: A): B
 }
-
-// aka: A => B
-// Note: A => B => C means A => (B => C)  (right associativity)
 ```
 
 ```scala
 trait PartialFunction[-A, +B] extends (A => B) {
-  def apply(x: A): B
-  def isDefinedAt(x: A): Boolean
+  def apply(a: A): B
+  def isDefinedAt(a: A): Boolean
 }
+```
+
+```scala
+type A => B => Function1[A, B]
+// `=>` is right-associative,
+// so `A => B => C` means `A => (B => C)`
+
+type A ?=> B = PartialFunction[A, B] // ideally...
+type A =>: B = PartialFunction[A, B] // for today...
 ```
 
 ```scala
 trait Function1[-A, +B] {
-  def apply(x: A): B
+  def apply(a: A): B
 
-  def andThen[C](g: B => C): A => C = { x => g(apply(x)) }
-  def compose[R](g: R => A): R => B = { x => apply(g(x)) }
+  def andThen[C](g: B => C): A => C = a => g(apply(a))
+  def compose[R](g: R => A): R => B = r => apply(g(r))
 
-  def unlift[T](implicit ev: B <:< Option[T]): A ?=> T = ??? // ext. method
+  def unlift[T](implicit ev: B <:< Option[T]): A =>: T = ??? // ext. method
 }
 ```
 
 ```scala
-trait PartialFunction[-A, +B] extends (A => B) {
-  def apply(v1: A): B
-  def isDefinedAt(x: A): Boolean
-
-  def andThen[C](k: B  => C): A ?=> C
-  def andThen[C](k: B ?=> C): A ?=> C
-
-  def compose[R](k: R ?=> A): R ?=> B
-
-  def orElse(that: A ?=> B): A ?=> B
-//def orElse[A1 < A, B1 >: B](that: A1 ?=> A2): A1 ?=> B1
+trait PartialFunction[-A, +B] extends (A => B) {  
+  def apply(a: A): B
+  def isDefinedAt(a: A): Boolean
 
   def lift: A => Option[B]
 
-  def applyOrElse(x: A, default: A => B): B = if (isDefinedAt(x)) apply(x) else default(x)
-//def applyOrElse[A1 <: A, B1 >: B](x: A1, default: A1 => B1): B1
+  def andThen[C](g: B =>  C): A =>: C
+  def andThen[C](g: B =>: C): A =>: C
 
-  def runWith[U](action: B => U): A => Boolean = { x =>
-    val z = applyOrElse(x, checkFallback[B])
-    if (fallbackOccurred(z)) false else {
-      action(z)
-      true
+  def compose[R](g: R =>: A): R =>: B
+
+  def orElse[A1 < A, B1 >: B](g: A1 =>: A2): A1 =>: B1
+
+  def applyOrElse[A1 <: A, B1 >: B](a: A1, default: A1 => B1): B1
+
+  def runWith[U](action: B => U): A => Boolean =
+    (a: A) => {
+      val b = applyOrElse(a, checkFallback[B])
+      if (fallbackOccurred(b)) false else {
+        action(b)
+        true
+      }
     }
-  }
 
   def unapply(a: A): Option[B]                = lift(a)
   def elementWise: ElementWiseExtractor[A, B] = new ElementWiseExtractor(this)
@@ -60,43 +65,42 @@ trait PartialFunction[-A, +B] extends (A => B) {
 
 ```scala
 object PartialFunction {
-  def empty[A, B]: A ?=> B
+  def empty[A, B]: A =>: B
 
-  def fromFunction[A, B](f: A => B): A ?=> B = { case x => f(x) }
+  def fromFunction[A, B](f: A => B): A =>: B = { case a => f(a) }
 
-  def cond[T](x: T)(pf: T ?=> Boolean): Boolean    = pf.applyOrElse(x, constFalse)
-  def condOpt[T, U](x: T)(pf: T ?=> U]): Option[U] = pf.lift(x)
+  def cond[A](a: A)(pf: A =>: Boolean): Boolean    = pf.applyOrElse(a, constFalse)
+  def condOpt[A, B](a: A)(pf: A =>: B]): Option[B] = pf.lift(a)
 
-  private[this] val fallback_fn: Any => Any   = _ => fallback_fn
-  private       def checkFallback[B]          = fallback_fn.asInstanceOf[Any => B]
-  private       def fallbackOccurred[B](x: B) = fallback_fn eq x.asInstanceOf[AnyRef]
+  private val fallback_fn: Any => Any            = _ => fallback_fn
+  private def checkFallback[B]: Any => B         = fallback_fn.asInstanceOf[Any => B]
+  private def fallbackOccurred[B](b: B): Boolean = fallback_fn eq b.asInstanceOf[AnyRef]
 }
 ```
 
 ```scala
-trait Function2[-T1, -T2, +R] {
-  def apply(v1: T1, v2: T2): R
+trait Function2[-A, -B, +R] {
+  def apply(a: A, B: B): R
 
-  def curried:  T1 => T2  => R = { (x1: T1) => (x2: T2) => apply(x1, x2) }
-  def  tupled: ((T1, T2)) => R = { case ((x1, x2))      => apply(x1, x2) }
+  def curried: A => B => R   = { a => b        => apply(a, b) }
+  def  tupled: ((A, B)) => R = { case ((a, b)) => apply(a, b) }
 }
 ```
 
 ```scala
 object Function {
-  def chain[T](fs: sc.Seq[T => T]): T => T = { x => fs.foldLeft(x)((x, f) => f(x)) }
-  def const[T, U](x: T)(y: U): T = x
-  def unlift(A => Option[B]): A ?=> B
+  def chain[A](fs: sc.Seq[A => A]): A => A = x => fs.foldLeft(x)((x, f) => f(x))
+  def const[A, U](x: A)(_: U): A           = x
+  def unlift(A => Option[B]): A =>: B
 
-  def  untupled[T1, T2, R](f: ((T1, T2)) => R):  (T1, T2)  => R = {       (x1, x2)  => f((x1, x2)) }
-  def uncurried[T1, T2, R](f:  T1 => T2  => R):  (T1, T2)  => R = {       (x1, x2)  =>  f(x1)(x2)  }
-  // ... up to 5 params (T1-T5)
+  def  untupled[A, B, R](f: ((A, B)) => R): (A, B) => R = (a, b) => f((a, b))
+  def uncurried[A, B, R](f:  A => B  => R): (A, B) => R = (a, b) =>  f(a)(b)
+  // ... up to 5 params (A-T5)
 
   // Also tupled, slotted for deprecation.. once type inferrence of tupled anonymous functions improves
-  def tupled[T1, T2, R](f: (T1, T2) => R): ((T1, T2)) => R = { case ((x1, x2)) => f(x1, x2) }
+  def tupled[A, B, R](f: (A, B) => R): ((A, B)) => R = { case ((a, b)) => f(a, b) }
 }
 ```
-
 
 [F1-scaladoc]: https://www.scala-lang.org/api/2.13.0/scala/Function1.html
 [PF-scaladoc]: https://www.scala-lang.org/api/2.13.0/scala/PartialFunction.html
