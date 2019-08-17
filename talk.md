@@ -1,5 +1,11 @@
 # How to totally fix PartialFunction
 
+[F1-scaladoc]: https://www.scala-lang.org/api/2.13.0/scala/Function1.html
+[PF-scaladoc]: https://www.scala-lang.org/api/2.13.0/scala/PartialFunction.html
+
+[F1-source]: https://github.com/scala/scala/blob/v2.13.0/src/library/scala/Function1.scala#L65
+[PF-source]: https://github.com/scala/scala/blob/v2.13.0/src/library/scala/PartialFunction.scala
+
 ```scala
 trait Function1[-A, +B] {
   def apply(a: A): B
@@ -35,23 +41,21 @@ trait Function1[-A, +B] {
 
 ```scala
 trait PartialFunction[-A, +B] extends (A => B) {  
-  def apply(a: A): B
-  def isDefinedAt(a: A): Boolean
-
-  def lift: A => Option[B]
+  def apply(a: A): B             = if (isDefinedAt(a)) { ... } else throw new MatchError(...)
+  def isDefinedAt(a: A): Boolean = ...
 
   def andThen[C](g: B  =>  C): A ?=>: C
   def andThen[C](g: B ?=>: C): A ?=>: C
-
   def compose[R](g: R ?=>: A): R ?=>: B
-
   def orElse[A1 < A, B1 >: B](g: A1 ?=>: A2): A1 ?=>: B1
+  def lift: A => Option[B]
 
-  def applyOrElse[A1 <: A, B1 >: B](a: A1, default: A1 => B1): B1
+  def applyOrElse[A1 <: A, B1 >: B](a: A1, default: A1 => B1): B1 =
+    if (isDefinedAt(a)) apply(a) else default(a)
 
   def runWith[U](action: B => U): A => Boolean =
     (a: A) => {
-      val b = applyOrElse(a, checkFallback[B])
+      val b: B = applyOrElse(a, checkFallback[B])
       if (fallbackOccurred(b)) false else {
         action(b)
         true
@@ -89,8 +93,8 @@ trait Function2[-A, -B, +R] {
 
 ```scala
 object Function {
-  def chain[A](fs: sc.Seq[A => A]): A => A = x => fs.foldLeft(x)((x, f) => f(x))
-  def const[A, U](x: A)(_: U): A           = x
+  def chain[A](fs: sc.Seq[A => A]): A => A = a => fs.foldLeft(a)((a, f) => f(a))
+  def const[A, U](a: A)(_: U): A           = a
   def unlift(A => Option[B]): A ?=>: B
 
   def  untupled[A, B, R](f: ((A, B)) => R): (A, B) => R = (a, b) => f((a, b))
@@ -120,9 +124,51 @@ scala.MatchError: BAR_B (of class java.lang.String)
   ... 52 elided
 ```
 
-[F1-scaladoc]: https://www.scala-lang.org/api/2.13.0/scala/Function1.html
-[PF-scaladoc]: https://www.scala-lang.org/api/2.13.0/scala/PartialFunction.html
+```scala
+scala> Try[Int](???).recover(_ => 1)
+                               ^
+       error: type mismatch;
+        found   : Throwable => Int
+        required: PartialFunction[Throwable,?]
 
-[F1-source]: https://github.com/scala/scala/blob/v2.13.0/src/library/scala/Function1.scala#L65
-[PF-source]: https://github.com/scala/scala/blob/v2.13.0/src/library/scala/PartialFunction.scala
+scala> Try[Int](???).recover { case _ => 1 }
+res1: scala.util.Try[Int] = Success(1)
+```
 
+"Synthesize a PartialFunction from function literal" [scala/scala#8172][], coming in 2.13.1.
+
+[scala/scala#8172]: https://github.com/scala/scala/pull/8172
+
+```scala
+trait PartialFunction[-A, +B] {
+  def isDefinedAt(a: A): Boolean = ...
+
+  /** Must not be called if `isDefinedAt` isn't `true` for `a`! */
+  def unsafeApply(a: A): B = ...
+
+  def andThen[C](g: B ?=>: C): A ?=>: C
+  def compose[Z](g: R ?=>: A): R ?=>: B
+  def orElse[A1 <: A, B1 >: B](g: A1 ?=>: B1): A1 ?=>: B1
+  def lift: A => Option[B]
+
+  def applyOrElse[A1 <: A, B1 >: B](a: A1, default: A1 => B1): B1 =
+    if (isDefinedAt(a)) unsafeApply(a) else default(a)
+
+  def runWith[U](action: B => U): A => Boolean =
+    (a: A) => {
+      val b: B = applyOrElse(a, checkFallback[B])
+      if (fallbackOccurred(b)) false else {
+        action(b)
+        true
+      }
+    }
+}
+
+trait Function1[-A, +B] extends PF[A, B] {
+  final def isDefinedAt(a: A) = true
+  final def apply(a: A): B    = unsafeApply(a)
+
+  def andThen[C](g: B => C): A => C = a => g(apply(a))
+  def compose[R](g: R => A): R => B = r => apply(g(r))
+}
+```
