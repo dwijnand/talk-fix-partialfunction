@@ -1,44 +1,5 @@
 
 ```scala
-object PartialFunction {
-  def empty[A, B]: A ?=>: B
-
-  def fromFunction[A, B](f: A => B): A ?=>: B = { case a => f(a) }
-
-  def cond[A](a: A)(pf: A ?=>: Boolean): Boolean    = pf.applyOrElse(a, constFalse)
-  def condOpt[A, B](a: A)(pf: A ?=>: B]): Option[B] = pf.lift(a)
-
-  private val fallback_fn: Any => Any            = _ => fallback_fn
-  private def checkFallback[B]: Any => B         = fallback_fn.asInstanceOf[Any => B]
-  private def fallbackOccurred[B](b: B): Boolean = fallback_fn eq b.asInstanceOf[AnyRef]
-}
-```
-
-```scala
-trait Function2[-A, -B, +R] {
-  def apply(a: A, B: B): R
-
-  def curried: A => B => R   = { a => b        => apply(a, b) }
-  def  tupled: ((A, B)) => R = { case ((a, b)) => apply(a, b) }
-}
-```
-
-```scala
-object Function {
-  def chain[A](fs: sc.Seq[A => A]): A => A = a => fs.foldLeft(a)((a, f) => f(a))
-  def const[A, U](a: A)(_: U): A           = a
-  def unlift(A => Option[B]): A ?=>: B
-
-  def  untupled[A, B, R](f: ((A, B)) => R): (A, B) => R = (a, b) => f((a, b))
-  def uncurried[A, B, R](f:  A => B  => R): (A, B) => R = (a, b) =>  f(a)(b)
-  // ... up to 5 params (A-T5)
-
-  // Also tupled, slotted for deprecation.. once type inferrence of tupled anonymous functions improves
-  def tupled[A, B, R](f: (A, B) => R): ((A, B)) => R = { case ((a, b)) => f(a, b) }
-}
-```
-
-```scala
 xs.collect { case s if s.startsWith("FOO_") => s }
 
 def receive = {

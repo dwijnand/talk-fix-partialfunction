@@ -29,13 +29,6 @@
     opacity: 0.75;
     color: #FF9800;
   }
-  .reveal pre code.hljs {
-    display: block;
-  }
-  code.hljs {
-    display: inline;
-    padding: 0;
-  }
   </style>
 </head>
 <body>
@@ -49,9 +42,29 @@ Dale Wijnand (<a href="http://twitter.com/dwijnand">@dwijnand</a>)
 Scala World, 2nd Sept 2019
 <https://github.com/dwijnand/talks/fix-pf.html>
 
+</script></section>
+
+<section>
+<section data-markdown><script type="text/template">
+
+## Agenda
+
+* Status Quo
+* Problems
+* Proposal
+* Summary
+
+</script></section>
+</section>
+
+<section>
+<section data-markdown><script type="text/template">
+
+## Status Quo
+
 </script></section><section data-markdown><script type="text/template">
 
-First: `Function1` <!-- .element: class="hljs" --> ([doc][F1-scaladoc]/[src][F1-source]):
+Definition of `Function1` ([doc][F1-scaladoc]/[src][F1-source]):
 ```scala
 trait Function1[-A, +B] {
   def apply(a: A): B
@@ -61,7 +74,7 @@ and its special type alias:
 ```scala
 type A => B = Function1[A, B]
 ```
-special because it's right-associative:
+It's special because it's right-associative:
 ```scala
 A => B => C
 // means
@@ -73,7 +86,7 @@ A => (B => C)
 
 </script></section><section data-markdown><script type="text/template">
 
-Now: `PartialFunction` ([doc][PF-scaladoc]/[src][PF-source]):
+Definition of `PartialFunction` ([doc][PF-scaladoc]/[src][PF-source]):
 ```scala
 trait PartialFunction[-A, +B] extends (A => B) {
   def isDefinedAt(a: A): Boolean
@@ -93,31 +106,12 @@ type A ?=>: B = PartialFunction[A, B]
 
 </script></section><section data-markdown><script type="text/template">
 
-How `PartialFunction` is/should be implemented:
-```scala
-trait PartialFunction[-A, +B] extends (A => B) {  
-  def isDefinedAt(a: A): Boolean = ...
-
-  def apply(a: A): B = {
-    if (isDefinedAt(a)) { ... }
-    else throw new MatchError(...)
-  }
-}
-```
-
-</script></section><section data-markdown><script type="text/template">
-
 The rest of `Function1`:
 
 ```scala
 trait Function1[-A, +B] {
-  def apply(a: A): B
-
   def andThen[C](g: B => C): A => C = a => g(apply(a))
   def compose[R](g: R => A): R => B = r => apply(g(r))
-
-  // actually an extension method in `object Function1`
-  def unlift[T](implicit ev: B <:< Option[T]): A ?=>: T
 }
 ```
 
@@ -130,9 +124,9 @@ trait PartialFunction[-A, +B] extends (A => B) {
   def andThen[C](g: B  =>  C): A ?=>: C
   def andThen[C](g: B ?=>: C): A ?=>: C
   def compose[R](g: R ?=>: A): R ?=>: B
-  def orElse[A1 < A, B1 >: B](g: A1 ?=>: A2): A1 ?=>: B1
+  def orElse[A1 < A, B1 >: B](g: A1 ?=>: B1): A1 ?=>: B1
 
-  def lift: A => Option[B]
+  def lift: A => Option[B] // and `.unlift` to go back
   def unapply(a: A): Option[B] = lift(a)
   def elementWise = new ElementWiseExtractor(this)
 }
@@ -151,15 +145,113 @@ trait PartialFunction[-A, +B] extends (A => B) {
   def runWith[U](action: B => U): A => Boolean =
     (a: A) => {
       val b: B = applyOrElse(a, checkFallback[B])
-      if (fallbackOccurred(b)) false else {
+      if (!fallbackOccurred(b)) {
         action(b)
         true
-      }
+      } else false
     }
 }
 ```
 
+</script></section><section data-markdown><script type="text/template">
+
+```scala
+object PartialFunction {
+  def empty[A, B]: A ?=>: B
+
+  def fromFunction[A, B](f: A => B): A ?=>: B = { case a => f(a) }
+
+  def cond[A](a: A)(pf: A ?=>: Boolean): Boolean    = pf.applyOrElse(a, constFalse)
+  def condOpt[A, B](a: A)(pf: A ?=>: B]): Option[B] = pf.lift(a)
+
+  private val fallback_fn: Any => Any            = _ => fallback_fn
+  private def checkFallback[B]: Any => B         = fallback_fn.asInstanceOf[Any => B]
+  private def fallbackOccurred[B](b: B): Boolean = fallback_fn eq b.asInstanceOf[AnyRef]
+}
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+How `PartialFunction` is implemented in theory:
+
+```scala
+trait PartialFunction[-A, +B] extends (A => B) {  
+  def isDefinedAt(a: A): Boolean = ...
+
+  def apply(a: A): B = {
+    if (isDefinedAt(a)) { ... }
+    else throw new MatchError(...)
+  }
+}
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+How generated `PartialFunction` is implemented.
+
+Given:
+
+```scala
+param => sel match { cases }
+```
+
+Generates:
+
+new AbstractPartialFunction[$argTp, $matchResTp] {
+  def applyOrElse[A1 <: $argTp, B1 >: $matchResTp]($param: A1, default: A1 => B1): B1 =
+     $selector match { $cases }
+  def isDefinedAt(x: $argTp): Boolean =
+     $selector match { $casesTrue }
+
+
+```scala
+new PartialFunction[A, B] {
+  // defined in AbstractPartialFunction
+  def apply(x: T1): R = applyOrElse(x, PartialFunction.empty)
+
+  def isDefinedAt(a: A): Boolean =
+    $selector match { $casesTrue }
+
+  def applyOrElse[A1 <: A, B1 >: B](a: A1, alt: A1 => B1) =
+     $selector match { $cases }
+}
+```
+
 </script></section>
+</section>
+
+<section><section data-markdown><script type="text/template">
+
+## Problems
+
+</script></section><section data-markdown><script type="text/template">
+
+problem 1
+
+</script></section>
+</section>
+
+<section><section data-markdown><script type="text/template">
+
+## Proposal
+
+</script></section><section data-markdown><script type="text/template">
+
+proposal 1
+
+</script></section>
+</section>
+
+<section><section data-markdown><script type="text/template">
+
+## Summary
+
+</script></section><section data-markdown><script type="text/template">
+
+summary
+
+</script></section>
+</section>
 </div>
 </div>
 
@@ -178,7 +270,7 @@ trait PartialFunction[-A, +B] extends (A => B) {
     ],
     slideNumber: true,
     history: true,
-    transition: 'fade',
+    // transition: 'fade',
     markdown: {
       breaks: true
     }
