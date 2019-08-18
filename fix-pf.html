@@ -35,16 +35,35 @@
 <div class="reveal">
 <div class="slides">
 
-<section>
-<h2>How to totally fix PartialFunction</h2>
-<p>Dale Wijnand (<a href="http://twitter.com/dwijnand">@dwijnand</a>)</p>
-<p>Scala World, 2nd Sept 2019</p>
-<p><a href="https://github.com/dwijnand/talks/fix-pf.html">https://github.com/dwijnand/talks/fix-pf.html</a></p>
-</section>
+<section data-markdown><textarea data-template>
+## How to totally fix PartialFunction
+Dale Wijnand (<a href="http://twitter.com/dwijnand">@dwijnand</a>)
 
-<section>
-Slide 2
-</section>
+Scala World, 2nd Sept 2019
+
+<https://github.com/dwijnand/talks/fix-pf.html>
+</textarea></section>
+
+<section data-markdown><textarea data-template>
+```scala
+trait Function1[-A, +B] {
+  def apply(a: A): B
+}
+// there's also a type alias for it:
+type A => B = Function1[A, B]
+// and it's special because it's right-associative:
+// so `A => B => C` means `A => (B => C)`
+```
+```scala
+trait PartialFunction[-A, +B] extends (A => B) {
+  def isDefinedAt(a: A): Boolean
+}
+// And I'll define a type alias for it, ideally I like:
+type A ?=> B = PartialFunction[A, B]
+// but to make it right-associative like `=>` I'll use:
+type A ?=>: B = PartialFunction[A, B]
+```
+</textarea></section>
 
 </div>
 </div>
@@ -62,6 +81,9 @@ Slide 2
       { src: 'plugin/notes/notes.js', async: true },
       { src: 'plugin/highlight/highlight.js', async: true }
     ]
+  });
+  Reveal.configure({
+    slideNumber: true
   });
 </script>
 </body>
