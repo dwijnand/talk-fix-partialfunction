@@ -49,7 +49,9 @@ Scala World, 2nd Sept 2019
 
 ## Agenda
 
-* Status Quo
+* Definitions
+* Implementation
+* Usage
 * Problems
 * Proposal
 * Summary
@@ -60,7 +62,7 @@ Scala World, 2nd Sept 2019
 <section>
 <section data-markdown><script type="text/template">
 
-## Status Quo
+## Definitions
 
 </script></section><section data-markdown><script type="text/template">
 
@@ -170,6 +172,13 @@ object PartialFunction {
 }
 ```
 
+</script></section>
+</section>
+
+<section><section data-markdown><script type="text/template">
+
+## Implementation
+
 </script></section><section data-markdown><script type="text/template">
 
 How `PartialFunction` is implemented in theory:
@@ -187,33 +196,43 @@ trait PartialFunction[-A, +B] extends (A => B) {
 
 </script></section><section data-markdown><script type="text/template">
 
-How generated `PartialFunction` is implemented.
-
-Given:
+An expression like:
 
 ```scala
 param => sel match { cases }
 ```
 
-Generates:
-
-new AbstractPartialFunction[$argTp, $matchResTp] {
-  def applyOrElse[A1 <: $argTp, B1 >: $matchResTp]($param: A1, default: A1 => B1): B1 =
-     $selector match { $cases }
-  def isDefinedAt(x: $argTp): Boolean =
-     $selector match { $casesTrue }
-
+generates:
 
 ```scala
 new PartialFunction[A, B] {
-  // defined in AbstractPartialFunction
-  def apply(x: T1): R = applyOrElse(x, PartialFunction.empty)
+  def apply(x: A): B = // defined in AbstractPartialFunction
+    applyOrElse(x, PartialFunction.empty)
 
   def isDefinedAt(a: A): Boolean =
-    $selector match { $casesTrue }
+    $selector match { $casesTrue; case _ => false }
 
   def applyOrElse[A1 <: A, B1 >: B](a: A1, alt: A1 => B1) =
-     $selector match { $cases }
+    $selector match { $cases; case _ => alt(x) }
+}
+```
+
+</script></section>
+</section>
+
+<section><section data-markdown><script type="text/template">
+
+## Usage
+
+</script></section><section data-markdown><script type="text/template">
+
+```scala
+xs.collect { case s if s.startsWith("FOO_") => s }
+
+def receive = {
+  case Deposit(amt)  => ???
+  case Withdraw(amt) => ???
+  // missing: CheckBalance
 }
 ```
 
@@ -226,7 +245,31 @@ new PartialFunction[A, B] {
 
 </script></section><section data-markdown><script type="text/template">
 
-problem 1
+```scala
+scala> List("FOO_A", "BAR_B").map { case s if s.startsWith("FOO_") => s }
+scala.MatchError: BAR_B (of class java.lang.String)
+  at .$anonfun$res1$1(<console>:1)
+  at scala.collection.immutable.List.map(List.scala:226)
+  ... 52 elided
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+```scala
+scala> Try[Int](???).recover(_ => 1)
+                               ^
+       error: type mismatch;
+        found   : Throwable => Int
+        required: PartialFunction[Throwable,?]
+
+scala> Try[Int](???).recover { case _ => 1 }
+res1: scala.util.Try[Int] = Success(1)
+```
+</script></section><section data-markdown><script type="text/template">
+
+"Synthesize a PartialFunction from function literal" [scala/scala#8172][], coming in 2.13.1.
+
+[scala/scala#8172]: https://github.com/scala/scala/pull/8172
 
 </script></section>
 </section>
@@ -237,7 +280,30 @@ problem 1
 
 </script></section><section data-markdown><script type="text/template">
 
-proposal 1
+Redefine `PartialFunction` as:
+
+```scala
+trait PartialFunction[-A, +B] {
+  def isDefinedAt(a: A): Boolean = ...
+
+  /** Must not be called if `isDefinedAt` isn't `true` for `a`! */
+  def unsafeApply(a: A): B = ...
+
+  def applyOrElse[A1 <: A, B1 >: B](a: A1, default: A1 => B1): B1 =
+    if (isDefinedAt(a)) unsafeApply(a) else default(a)
+}
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+Redefine `Function1` as:
+
+```scala
+trait Function1[-A, +B] extends PF[A, B] {
+  final def isDefinedAt(a: A) = true
+  final def apply(a: A): B    = unsafeApply(a)
+}
+```
 
 </script></section>
 </section>
@@ -248,7 +314,7 @@ proposal 1
 
 </script></section><section data-markdown><script type="text/template">
 
-summary
+WDYT?
 
 </script></section>
 </section>
