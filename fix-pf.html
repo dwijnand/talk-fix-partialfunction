@@ -45,6 +45,7 @@ Scala World, 2nd Sept 2019
 </textarea></section>
 
 <section data-markdown><textarea data-template>
+First `Function1` ([doc][F1-scaladoc]/[src][F1-source]):
 ```scala
 trait Function1[-A, +B] {
   def apply(a: A): B
@@ -54,6 +55,7 @@ type A => B = Function1[A, B]
 // and it's special because it's right-associative:
 // so `A => B => C` means `A => (B => C)`
 ```
+Now `PartialFunction` ([doc][PF-scaladoc]/[src][PF-source]):
 ```scala
 trait PartialFunction[-A, +B] extends (A => B) {
   def isDefinedAt(a: A): Boolean
@@ -63,6 +65,10 @@ type A ?=> B = PartialFunction[A, B]
 // but to make it right-associative like `=>` I'll use:
 type A ?=>: B = PartialFunction[A, B]
 ```
+[F1-scaladoc]: https://www.scala-lang.org/api/2.13.0/scala/Function1.html
+[F1-source]: https://github.com/scala/scala/blob/v2.13.0/src/library/scala/Function1.scala
+[PF-scaladoc]: https://www.scala-lang.org/api/2.13.0/scala/PartialFunction.html
+[PF-source]: https://github.com/scala/scala/blob/v2.13.0/src/library/scala/PartialFunction.scala
 </textarea></section>
 
 </div>

@@ -1,10 +1,5 @@
 # How to totally fix PartialFunction
 
-[F1-scaladoc]: https://www.scala-lang.org/api/2.13.0/scala/Function1.html
-[PF-scaladoc]: https://www.scala-lang.org/api/2.13.0/scala/PartialFunction.html
-
-[F1-source]: https://github.com/scala/scala/blob/v2.13.0/src/library/scala/Function1.scala#L65
-[PF-source]: https://github.com/scala/scala/blob/v2.13.0/src/library/scala/PartialFunction.scala
 
 ```scala
 trait Function1[-A, +B] {
