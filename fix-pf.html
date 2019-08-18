@@ -34,43 +34,124 @@
 <body>
 <div class="reveal">
 <div class="slides">
-
 <section data-markdown><textarea data-template>
+
 ## How to totally fix PartialFunction
 Dale Wijnand (<a href="http://twitter.com/dwijnand">@dwijnand</a>)
 
 Scala World, 2nd Sept 2019
 
 <https://github.com/dwijnand/talks/fix-pf.html>
-</textarea></section>
 
-<section data-markdown><textarea data-template>
+</textarea></section><section data-markdown><textarea data-template>
+
 First `Function1` ([doc][F1-scaladoc]/[src][F1-source]):
 ```scala
 trait Function1[-A, +B] {
   def apply(a: A): B
 }
-// there's also a type alias for it:
-type A => B = Function1[A, B]
-// and it's special because it's right-associative:
-// so `A => B => C` means `A => (B => C)`
 ```
+and its special type alias:
+```scala
+type A => B = Function1[A, B]
+```
+special because it's right-associative:
+```scala
+A => B => C
+// means
+A => (B => C)
+```
+
+[F1-scaladoc]: https://www.scala-lang.org/api/2.13.0/scala/Function1.html
+[F1-source]: https://github.com/scala/scala/blob/v2.13.0/src/library/scala/Function1.scala
+
+</textarea></section><section data-markdown><textarea data-template>
+
 Now `PartialFunction` ([doc][PF-scaladoc]/[src][PF-source]):
 ```scala
 trait PartialFunction[-A, +B] extends (A => B) {
   def isDefinedAt(a: A): Boolean
 }
-// And I'll define a type alias for it, ideally I like:
+```
+I often type alias it.  Ideally I'd like:
+```scala
 type A ?=> B = PartialFunction[A, B]
-// but to make it right-associative like `=>` I'll use:
+```
+But to make it right-associative like `=>` I'll use:
+```scala
 type A ?=>: B = PartialFunction[A, B]
 ```
-[F1-scaladoc]: https://www.scala-lang.org/api/2.13.0/scala/Function1.html
-[F1-source]: https://github.com/scala/scala/blob/v2.13.0/src/library/scala/Function1.scala
+
 [PF-scaladoc]: https://www.scala-lang.org/api/2.13.0/scala/PartialFunction.html
 [PF-source]: https://github.com/scala/scala/blob/v2.13.0/src/library/scala/PartialFunction.scala
-</textarea></section>
 
+</textarea></section><section data-markdown><textarea data-template>
+
+How `PartialFunction` is/should be implemented:
+```scala
+trait PartialFunction[-A, +B] extends (A => B) {  
+  def apply(a: A): B =
+    if (isDefinedAt(a)) { ... }
+    else throw new MatchError(...)
+
+  def isDefinedAt(a: A): Boolean = ...
+```
+
+</textarea></section><section data-markdown><textarea data-template>
+
+The rest of `Function1`:
+
+```scala
+trait Function1[-A, +B] {
+  def apply(a: A): B
+
+  def andThen[C](g: B => C): A => C = a => g(apply(a))
+  def compose[R](g: R => A): R => B = r => apply(g(r))
+
+  // actually an extension method in `Function1`
+  def unlift[T](implicit ev: B <:< Option[T]): A ?=>: T
+}
+```
+
+</textarea></section><section data-markdown><textarea data-template>
+
+The rest of `PartialFunction`:
+
+```scala
+trait PartialFunction[-A, +B] extends (A => B) {  
+  def apply(a: A): B =
+    if (isDefinedAt(a)) { ... }
+    else throw new MatchError(...)
+
+  def isDefinedAt(a: A): Boolean = ...
+
+  def andThen[C](g: B  =>  C): A ?=>: C
+  def andThen[C](g: B ?=>: C): A ?=>: C
+  def compose[R](g: R ?=>: A): R ?=>: B
+  def orElse[A1 < A, B1 >: B](g: A1 ?=>: A2): A1 ?=>: B1
+  def lift: A => Option[B]
+
+  def applyOrElse[A1 <: A, B1 >: B](a: A1, default: A1 => B1): B1 =
+    if (isDefinedAt(a)) apply(a) else default(a)
+
+  def runWith[U](action: B => U): A => Boolean =
+    (a: A) => {
+      val b: B = applyOrElse(a, checkFallback[B])
+      if (fallbackOccurred(b)) false else {
+        action(b)
+        true
+      }
+    }
+
+  def unapply(a: A): Option[B] =
+    lift(a)
+
+  def elementWise: ElementWiseExtractor[A, B] =
+    new ElementWiseExtractor(this)
+}
+```
+
+</textarea></section>
 </div>
 </div>
 
