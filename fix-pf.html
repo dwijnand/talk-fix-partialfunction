@@ -50,8 +50,8 @@ Scala World, 2nd Sept 2019
 ## Agenda
 
 * Definitions
-* Implementation
 * Usage
+* Implementation
 * Problems
 * Proposal
 * Summary
@@ -66,17 +66,17 @@ Scala World, 2nd Sept 2019
 
 </script></section><section data-markdown><script type="text/template">
 
-Definition of `Function1` ([doc][F1-scaladoc]/[src][F1-source]):
+So how is `Function1` defined? ([doc][F1-scaladoc]/[src][F1-source]):
 ```scala
 trait Function1[-A, +B] {
   def apply(a: A): B
 }
 ```
-and its special type alias:
+but we know it by its infix type alias:
 ```scala
-type A => B = Function1[A, B]
+type A => B = Function1[A, B] // =>[A, B]
 ```
-It's special because it's right-associative:
+which is special, because it's right-associative:
 ```scala
 A => B => C
 // means
@@ -88,15 +88,19 @@ A => (B => C)
 
 </script></section><section data-markdown><script type="text/template">
 
-Definition of `PartialFunction` ([doc][PF-scaladoc]/[src][PF-source]):
+And how is `PartialFunction` defined? ([doc][PF-scaladoc]/[src][PF-source]):
 ```scala
 trait PartialFunction[-A, +B] extends (A => B) {
   def isDefinedAt(a: A): Boolean
 }
 ```
-I often type alias `PartialFunction`.  Ideally I'd like:
+I often type alias it.  Ideally I'd like:
 ```scala
 type A ?=> B = PartialFunction[A, B]
+```
+(in the past I've also used this alternative:)
+```scala
+type A =?> B = PartialFunction[A, B]
 ```
 But to make it right-associative, like `=>`, I'll use:
 ```scala
@@ -108,7 +112,7 @@ type A ?=>: B = PartialFunction[A, B]
 
 </script></section><section data-markdown><script type="text/template">
 
-The rest of `Function1`:
+`Function1` also has some methods (combinators):
 
 ```scala
 trait Function1[-A, +B] {
@@ -119,7 +123,7 @@ trait Function1[-A, +B] {
 
 </script></section><section data-markdown><script type="text/template">
 
-The rest of `PartialFunction` (1/2):
+and now `PartialFunction`'s methods (1/2):
 
 ```scala
 trait PartialFunction[-A, +B] extends (A => B) {  
@@ -131,6 +135,7 @@ trait PartialFunction[-A, +B] extends (A => B) {
   def lift: A => Option[B] // and `.unlift` to go back
   def unapply(a: A): Option[B] = lift(a)
   def elementWise = new ElementWiseExtractor(this)
+  ...
 }
 ```
 
@@ -157,19 +162,87 @@ trait PartialFunction[-A, +B] extends (A => B) {
 
 </script></section><section data-markdown><script type="text/template">
 
+There are also utility methods on `PartialFunction`'s companion object (1/2):
 ```scala
 object PartialFunction {
   def empty[A, B]: A ?=>: B
 
-  def fromFunction[A, B](f: A => B): A ?=>: B = { case a => f(a) }
+  def fromFunction[A, B](f: A => B): A ?=>: B =
+    { case a => f(a) }
 
-  def cond[A](a: A)(pf: A ?=>: Boolean): Boolean    = pf.applyOrElse(a, constFalse)
-  def condOpt[A, B](a: A)(pf: A ?=>: B]): Option[B] = pf.lift(a)
+  def cond[A](a: A)(pf: A ?=>: Boolean): Boolean =
+    pf.applyOrElse(a, constFalse)
 
-  private val fallback_fn: Any => Any            = _ => fallback_fn
-  private def checkFallback[B]: Any => B         = fallback_fn.asInstanceOf[Any => B]
-  private def fallbackOccurred[B](b: B): Boolean = fallback_fn eq b.asInstanceOf[AnyRef]
+  def condOpt[A, B](a: A)(pf: A ?=>: B]): Option[B] =
+    pf.lift(a)
+
+  ...
 }
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+There are also utility methods on `PartialFunction`'s companion object (2/2):
+```scala
+object PartialFunction {
+  ...
+
+  private val fallback_fn: Any => Any =
+    _ => fallback_fn
+
+  private def checkFallback[B]: Any => B =
+    fallback_fn.asInstanceOf[Any => B]
+
+  private def fallbackOccurred[B](b: B): Boolean =
+    fallback_fn.eq(b.asInstanceOf[AnyRef])
+}
+```
+
+</script></section>
+</section>
+
+<section><section data-markdown><script type="text/template">
+
+## Usage
+
+So when do you want to use `PartialFunction`?
+
+I know two general use cases.
+
+</script></section><section data-markdown><script type="text/template">
+
+1) when you want to operate on only part of the input
+
+without addition runtime costs (`Option` boxing)
+
+</script></section><section data-markdown><script type="text/template">
+
+For example, mapping on only part of the elements:
+
+```scala
+xs.collect { case s if s.startsWith("FOO_") => ... }
+```
+
+or handling only part of the actor messages:
+
+```scala
+def receive = {
+  case Deposit(amt)  => ???
+  case Withdraw(amt) => ???
+  // missing: CheckBalance
+}
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+2) when you want to define individual partial functions
+
+and then combine them with `orElse`:
+
+```scala
+myFuture.recoverWith(
+  onNoUser.orElse(onNoToken).orElse(recordIncident)
+)
 ```
 
 </script></section>
@@ -181,10 +254,20 @@ object PartialFunction {
 
 </script></section><section data-markdown><script type="text/template">
 
-How `PartialFunction` is implemented in theory:
+So given an expression like:
 
 ```scala
-trait PartialFunction[-A, +B] extends (A => B) {  
+param => selector match { cases }
+```
+
+what's the resulting `PartialFunction`?
+
+</script></section><section data-markdown><script type="text/template">
+
+First off: `apply` must honour `isDefinedAt`:
+
+```scala
+... extends trait PartialFunction[..., ...] {
   def isDefinedAt(a: A): Boolean = ...
 
   def apply(a: A): B = {
@@ -196,17 +279,31 @@ trait PartialFunction[-A, +B] extends (A => B) {
 
 </script></section><section data-markdown><script type="text/template">
 
-An expression like:
+but that would make `applyOrElse` expensive:
 
 ```scala
-param => sel match { cases }
+... extends PartialFunction[..., ...] {
+  def isDefinedAt(a: A): Boolean = ...
+
+  def apply(a: A): B = {
+    if (isDefinedAt(a)) { ... }
+    else throw new MatchError(...)
+  }
+
+  // as defined in PartialFunction
+  def applyOrElse[A1 <: A, B1 >: B](a: A1, alt: A1 => B1) = {
+    if (isDefinedAt(a)) apply(a) else alt(a)
+  }
+}
 ```
 
-generates:
+</script></section><section data-markdown><script type="text/template">
+
+So instead the compiler generates:
 
 ```scala
-new PartialFunction[A, B] {
-  def apply(x: A): B = // defined in AbstractPartialFunction
+... extends AbstractPartialFunction[..., ...] {
+  def apply(x: A): B = // actually defined in AbstractPartialFunction
     applyOrElse(x, PartialFunction.empty)
 
   def isDefinedAt(a: A): Boolean =
@@ -214,25 +311,6 @@ new PartialFunction[A, B] {
 
   def applyOrElse[A1 <: A, B1 >: B](a: A1, alt: A1 => B1) =
     $selector match { $cases; case _ => alt(x) }
-}
-```
-
-</script></section>
-</section>
-
-<section><section data-markdown><script type="text/template">
-
-## Usage
-
-</script></section><section data-markdown><script type="text/template">
-
-```scala
-xs.collect { case s if s.startsWith("FOO_") => s }
-
-def receive = {
-  case Deposit(amt)  => ???
-  case Withdraw(amt) => ???
-  // missing: CheckBalance
 }
 ```
 
