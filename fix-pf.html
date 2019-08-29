@@ -34,6 +34,7 @@
 <body>
 <div class="reveal">
 <div class="slides">
+<section>
 <section data-markdown><script type="text/template">
 
 ## How to totally fix PartialFunction
@@ -42,17 +43,14 @@ Dale Wijnand (<a href="http://twitter.com/dwijnand">@dwijnand</a>)
 Scala World, 2nd Sept 2019
 <https://github.com/dwijnand/talks/fix-pf.html>
 
-</script></section>
-
-<section>
-<section data-markdown><script type="text/template">
+</script></section><section data-markdown><script type="text/template">
 
 ## Agenda
 
 * Definitions
 * Usage
 * Implementation
-* Problems
+* Problem(s)
 * Proposal
 * Summary
 
@@ -63,8 +61,6 @@ Scala World, 2nd Sept 2019
 <section data-markdown><script type="text/template">
 
 ## Definitions
-
-</script></section><section data-markdown><script type="text/template">
 
 So how is `Function1` defined? ([doc][F1-scaladoc]/[src][F1-source]):
 ```scala
@@ -87,6 +83,8 @@ A => (B => C)
 [F1-source]: https://github.com/scala/scala/blob/v2.13.0/src/library/scala/Function1.scala
 
 </script></section><section data-markdown><script type="text/template">
+
+## Definitions
 
 And how is `PartialFunction` defined? ([doc][PF-scaladoc]/[src][PF-source]):
 ```scala
@@ -112,6 +110,8 @@ type A ?=>: B = PartialFunction[A, B]
 
 </script></section><section data-markdown><script type="text/template">
 
+## Definitions
+
 `Function1` also has some methods (combinators):
 
 ```scala
@@ -122,6 +122,8 @@ trait Function1[-A, +B] {
 ```
 
 </script></section><section data-markdown><script type="text/template">
+
+## Definitions
 
 and now `PartialFunction`'s methods (1/2):
 
@@ -140,6 +142,8 @@ trait PartialFunction[-A, +B] extends (A => B) {
 ```
 
 </script></section><section data-markdown><script type="text/template">
+
+## Definitions
 
 The rest of `PartialFunction` (2/2):
 
@@ -162,6 +166,8 @@ trait PartialFunction[-A, +B] extends (A => B) {
 
 </script></section><section data-markdown><script type="text/template">
 
+## Definitions
+
 There are also utility methods on `PartialFunction`'s companion object (1/2):
 ```scala
 object PartialFunction {
@@ -181,6 +187,8 @@ object PartialFunction {
 ```
 
 </script></section><section data-markdown><script type="text/template">
+
+## Definitions
 
 There are also utility methods on `PartialFunction`'s companion object (2/2):
 ```scala
@@ -207,15 +215,15 @@ object PartialFunction {
 
 So when do you want to use `PartialFunction`?
 
-I know two general use cases.
+I know two general use cases
 
 </script></section><section data-markdown><script type="text/template">
+
+## Usage
 
 1) when you want to operate on only part of the input
 
 without addition runtime costs (`Option` boxing)
-
-</script></section><section data-markdown><script type="text/template">
 
 For example, mapping on only part of the elements:
 
@@ -235,6 +243,8 @@ def receive = {
 
 </script></section><section data-markdown><script type="text/template">
 
+## Usage
+
 2) when you want to define individual partial functions
 
 and then combine them with `orElse`:
@@ -252,8 +262,6 @@ myFuture.recoverWith(
 
 ## Implementation
 
-</script></section><section data-markdown><script type="text/template">
-
 So given an expression like:
 
 ```scala
@@ -263,6 +271,8 @@ param => selector match { cases }
 what's the resulting `PartialFunction`?
 
 </script></section><section data-markdown><script type="text/template">
+
+## Implementation
 
 First off: `apply` must honour `isDefinedAt`:
 
@@ -279,6 +289,8 @@ First off: `apply` must honour `isDefinedAt`:
 
 </script></section><section data-markdown><script type="text/template">
 
+## Implementation
+
 but that would make `applyOrElse` expensive:
 
 ```scala
@@ -290,7 +302,7 @@ but that would make `applyOrElse` expensive:
     else throw new MatchError(...)
   }
 
-  // as defined in PartialFunction
+  // this is the default implementation in PartialFunction
   def applyOrElse[A1 <: A, B1 >: B](a: A1, alt: A1 => B1) = {
     if (isDefinedAt(a)) apply(a) else alt(a)
   }
@@ -299,11 +311,13 @@ but that would make `applyOrElse` expensive:
 
 </script></section><section data-markdown><script type="text/template">
 
+## Implementation
+
 So instead the compiler generates:
 
 ```scala
 ... extends AbstractPartialFunction[..., ...] {
-  def apply(x: A): B = // actually defined in AbstractPartialFunction
+  def apply(x: A): B = // defined in AbstractPartialFunction
     applyOrElse(x, PartialFunction.empty)
 
   def isDefinedAt(a: A): Boolean =
@@ -319,19 +333,91 @@ So instead the compiler generates:
 
 <section><section data-markdown><script type="text/template">
 
-## Problems
+## Problem(s)
+
+This has been discussed for a number of years
+
+Mostly that it doesn't make sense mathematically:
+
+total functions are a subset of partial functions
+
+And therefore `Function1` should extends `PartialFunction` instead
 
 </script></section><section data-markdown><script type="text/template">
 
+## Problem(s)
+
+The counter is from an object-oriented point-of-view
+
+`PartialFunction` adds `isDefinedAt`
+
+And therefore it makes sense that `PartialFunction` extends `Function1`
+
+(Perhaps rename it `QueryableFunction`)
+
+</script></section><section data-markdown><script type="text/template">
+
+## Problem(s)
+
+The problem with this counter-argument is:
+
+_it changes the expectations of `apply`_
+
+Now, there are no totality guarantees in Scala
+
+There's no guarantee that `Function1` doesn't throw
+
+But there is an _assumption_ that a `A => B` is total
+
+Or at least defined for "most" values
+
+</script></section><section data-markdown><script type="text/template">
+
+## Problem(s)
+
+Here's an example of such an expectation:
+
 ```scala
-scala> List("FOO_A", "BAR_B").map { case s if s.startsWith("FOO_") => s }
+scala> List("FOO_A", "BAR_B").map {
+     |   case s if s.startsWith("FOO_") => s
+     | }
 scala.MatchError: BAR_B (of class java.lang.String)
-  at .$anonfun$res1$1(<console>:1)
+  at .$anonfun$res0$1(<console>:1)
   at scala.collection.immutable.List.map(List.scala:226)
-  ... 52 elided
+  ... 58 elided
 ```
 
 </script></section><section data-markdown><script type="text/template">
+
+## Problem(s)
+
+`PartialFunction`'s addition of `isDefinedAt`
+
+along with the ergonomic syntax for defining them
+
+changes the expectations of `apply`
+
+Suddenly it's _more likely_ that `apply` isn't defined
+
+</script></section><section data-markdown><script type="text/template">
+
+## Problem(s)
+
+To put it another way:
+
+Given a value of type `Function1[..., ...]`
+
+* Is calling `apply` safe?
+* Should I check `isInstanceOf[PartialFunction[_, _]]`?
+* Should I just `try`/`catch` it?
+
+</script></section><section data-markdown><script type="text/template">
+
+## Problem(s)
+
+Additionally there's another smaller problem,
+
+in that requiring a partial function affects ergonomics
 
 ```scala
 scala> Try[Int](???).recover(_ => 1)
@@ -345,7 +431,15 @@ res1: scala.util.Try[Int] = Success(1)
 ```
 </script></section><section data-markdown><script type="text/template">
 
-"Synthesize a PartialFunction from function literal" [scala/scala#8172][], coming in 2.13.1.
+## Problem(s)
+
+That one I've actually fix
+
+See [scala/scala#8172][]
+
+"Synthesize a PartialFunction from function literal"
+
+Coming in Scala 2.13.1
 
 [scala/scala#8172]: https://github.com/scala/scala/pull/8172
 
@@ -356,32 +450,171 @@ res1: scala.util.Try[Int] = Success(1)
 
 ## Proposal
 
+So the ideal setup is, really, quite simple
+
+You need two changes:
+
+1. Function1 extends PartialFunction
+2. No `apply` on `PartialFunction`
+
 </script></section><section data-markdown><script type="text/template">
 
-Redefine `PartialFunction` as:
+## Proposal
+
+So something like this:
 
 ```scala
 trait PartialFunction[-A, +B] {
-  def isDefinedAt(a: A): Boolean = ...
+  def isDefinedAt(a: A): Boolean
 
-  /** Must not be called if `isDefinedAt` isn't `true` for `a`! */
-  def unsafeApply(a: A): B = ...
+  /** Call ONLY if `isDefinedAt` is `true` for `a`! */
+  def unsafeApply(a: A): B
 
-  def applyOrElse[A1 <: A, B1 >: B](a: A1, default: A1 => B1): B1 =
-    if (isDefinedAt(a)) unsafeApply(a) else default(a)
+  def applyOrElse[A1 <: A, B1 >: B](a: A1, alt: A1 => B1) =
+    if (isDefinedAt(a)) unsafeApply(a) else alt(a)
 }
-```
 
-</script></section><section data-markdown><script type="text/template">
-
-Redefine `Function1` as:
-
-```scala
-trait Function1[-A, +B] extends PF[A, B] {
+trait Function1[-A, +B] extends PartialFunction[A, B] {
   final def isDefinedAt(a: A) = true
   final def apply(a: A): B    = unsafeApply(a)
 }
 ```
+
+</script></section><section data-markdown><script type="text/template">
+
+## Proposal
+
+Note how `Function1` is still a SAM type.
+
+And how `Function1`'s `apply` is cheap
+
+it doesn't have to execute `isDefinedAt`
+
+</script></section><section data-markdown><script type="text/template">
+
+## Proposal
+
+With that implementation everything gets simpler
+
+You can pass `Function1` values
+
+where `PartialFunction` values are expected
+
+And the combinators (`andThen`, `orElse`, etc)
+
+are much simpler
+
+</script></section><section data-markdown><script type="text/template">
+
+## Proposal
+
+Now how do we get there?
+
+well that's a lot harder...
+
+I sanity-checked my idea with the Scala Team
+
+and with Martin Odersky
+
+and there doesn't seem to be anything I've missed
+
+</script></section><section data-markdown><script type="text/template">
+
+## Proposal
+
+My first idea was this:
+
+Introduce a new "partial function"
+
+as a super-type of `Function1`
+
+and eventually deprecate `PartialFunction`
+
+and just lose the name "PartialFunction"
+
+</script></section><section data-markdown><script type="text/template">
+
+## Proposal
+
+```scala
+trait PF[-A, +B] { // real name, but with the ?=> alias
+  def isDefinedAt(a: A): Boolean
+  def unsafeApply(a: A): B
+
+  def applyOrElse[A1 <: A, B1 >: B](a: A1, alt: A1 => B1) =
+    if (isDefinedAt(a)) unsafeApply(a) else alt(a)
+}
+
+trait Function1[-A, +B] extends (A ?=> B) {
+  final def isDefinedAt(a: A) = true
+  final def unsafeApply(a: A) = apply(a)
+}
+
+trait PartialFunction[-A, +B] extends (A => B)
+```
+
+</script></section><section data-markdown><script type="text/template">
+
+## Proposal
+
+and then what?
+
+In some version of Scala
+
+`{ case ... => ... }` generates a `PF`
+
+instead of `PartialFunction`?
+
+:-/
+
+</script></section><section data-markdown><script type="text/template">
+
+## Proposal
+
+Another idea is to drop the inheritance instead
+
+So introduce `unsafeApply` on `PartialFunction`
+
+and override `apply` to `@deprecate` it
+
+</script></section><section data-markdown><script type="text/template">
+
+## Proposal
+
+It means creating `PartialFunction` values
+
+when you have a `Function1` value
+
+So maybe add `asPartial` on `Function1`
+
+Or you can just use eta-expansion (thanks to my PR):
+
+```scala
+Try[Int](???).recover(fallback.asPartial)
+Try[Int](???).recover(fallback(_))
+```
+
+You can also implement both traits
+
+if you have a seq of 1000 values used both ways
+
+</script></section><section data-markdown><script type="text/template">
+
+## Proposal
+
+The final idea is...
+
+Create an unboxed `Option` with opaque types
+
+Let's call it `Opt`
+
+and now instead of `A ?=> B` you just require `A ?=> Opt[B]`
+
+now no more boxing cost
+
+and build your own `orElse` based on that
+
+Need to study unboxed, opaque type Options in Dotty
 
 </script></section>
 </section>
@@ -389,8 +622,6 @@ trait Function1[-A, +B] extends PF[A, B] {
 <section><section data-markdown><script type="text/template">
 
 ## Summary
-
-</script></section><section data-markdown><script type="text/template">
 
 WDYT?
 
