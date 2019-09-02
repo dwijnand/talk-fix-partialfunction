@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Title</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <link rel="stylesheet" type="text/css" href="style.css"/>
+  </head>
+
+  <body>
+    <!-- Presentation Begin -->
+    <textarea id="source">
+
+class: center, middle
+
+# Title
+
+This is the first slide
+[//]: # (and this is a comment that isn't shown in the slide)
+
+---
+
+# Stuff to remember
+
+1. Press "P" for presentation mode
+    - Press "T" to reset timer
+2. Press "C" to clone window
+3. Press "H" to view help
+
+???
+Oh yeah, it's also possible to include notes!
+
+---
+
+class: left
+
+# Simple and easy
+
+```javascript
+console.log("It's markdown. How much simpler can it get?")
+```
+
+<br/>
+<br/>
+<br/>
+**[RemarkPortable](https://github.com/BenTearzz/RemarkPortable)**, created from the project **[Remark](https://github.com/gnab/remark)** 
+
+[![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+.footnote[.red[*] You can also include a footnote! ]
+
+    </textarea>
+    <!-- Presentation End -->
+
+    <!-- Build Slide -->
+    <script src="remark.min.js"></script>
+    <script>var slideshow = remark.create(/*{sourceUrl: 'presentation-file.md'}*/);</script>
+    <!-- Build Slide -->
+  </body>
+</html>
