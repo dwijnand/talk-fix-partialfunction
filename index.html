@@ -372,7 +372,7 @@ So, actually, I have 3 proposals.
 
 --
 
-2. Give `PartialFunction` an `unsafeApply` instead of `apply`
+2. Split `Function1`'s `apply` from `PartialFunction`'s `apply` (renamed `unsafeApply`)
 
 --
 
@@ -392,6 +392,8 @@ trait Function1[-A, +B] extends PartialFunction[A, B] {
   final def apply(a: A): B    = unsafeApply(a)
 }
 ```
+
+--
 
 Note how `Function1` is still a SAM type.
 
@@ -505,7 +507,7 @@ Try[Int](???).recover(fallback(_))
 
 --
 
-Or you can just mix-in both traits (if you have many instance)
+Or you can just mix-in both traits (if you have many instances)
 
 ---
 
